@@ -9,6 +9,7 @@ import com.example.capstone.service.EventAggregator
 import com.example.capstone.service.impl.{DataframeEventAggregator, RDDEventAggregatorImpl}
 import com.example.common.Event
 import com.example.common.Formats.dateTimeFormatter
+import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.hive.HiveContext
 import org.apache.spark.sql.{DataFrame, Row, SQLContext}
@@ -96,13 +97,13 @@ object Main extends App {
     }
   }
 
-  private def getGeoIps(source: String): (RDD[GeoIp], DataFrame) = {
+  private def getGeoIps(source: String): (RDD[GeoIp], Broadcast[DataFrame]) = {
     if ("hive".equalsIgnoreCase(source)) {
       import sqlContext.sql
       import sqlContext.implicits._
       val ipsDF: DataFrame = sql(s"select * from $ipsHiveTableName")
       val ipsRDD: RDD[GeoIp] = ipsDF.map[GeoIp]((row: Row) => GeoIp(row.getString(0), row.getInt(1), row.getInt(2)))
-      (ipsRDD, ipsDF)
+      (ipsRDD, context.broadcast(ipsDF))
     } else {
       val ipsRDD = context.textFile(ipsLocation)
         .map(_.split(","))
@@ -112,7 +113,7 @@ object Main extends App {
       val ipsDF: DataFrame = sqlContext.read.format("com.databricks.spark.csv")
         .schema(GeodataRepository.ipsSchema)
         .load(ipsLocation)
-      (ipsRDD, ipsDF)
+      (ipsRDD, context.broadcast(ipsDF))
     }
   }
 

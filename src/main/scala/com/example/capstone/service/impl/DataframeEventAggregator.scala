@@ -3,11 +3,12 @@ package com.example.capstone.service.impl
 import com.example.capstone.model._
 import com.example.capstone.service.EventAggregator
 import com.example.common.{IpUtils, Network}
+import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.sql._
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions.{col, rank, udf}
 
-class DataframeEventAggregator(val sqlContext: SQLContext, val eventsDF: DataFrame, val geoips: DataFrame,
+class DataframeEventAggregator(val sqlContext: SQLContext, val eventsDF: DataFrame, val geoips: Broadcast[DataFrame],
                                val geodata: DataFrame)
   extends EventAggregator{
 
@@ -23,7 +24,7 @@ class DataframeEventAggregator(val sqlContext: SQLContext, val eventsDF: DataFra
   private def aggregateCountries(eventsDF: DataFrame): Iterable[TopCountry] = {
 
     val geodataDF = geodata.as("geodata")
-    val geoipDF = geoips.as("ips")
+    val geoipDF = geoips.value.as("ips")
     val ipInNetworkUDF = udf { (ip: String, network: String) => {
       val ipNumeric = IpUtils.bitIpToLong(IpUtils.toBitString(ip))
       val parsedNetwork = new Network(network)

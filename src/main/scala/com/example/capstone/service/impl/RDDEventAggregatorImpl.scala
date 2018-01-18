@@ -6,6 +6,8 @@ import com.example.common.IpUtils.toBitString
 import com.example.common.{Event, IpUtils, Network}
 import org.apache.spark.rdd.RDD
 
+import scala.collection.mutable
+
 class RDDEventAggregatorImpl(val eventsRDD: RDD[Event], val geoips: RDD[GeoIp], val geodata: RDD[GeoData]) extends EventAggregator {
 
   override def aggregateEvents(): AggregationResult = {
@@ -14,10 +16,9 @@ class RDDEventAggregatorImpl(val eventsRDD: RDD[Event], val geoips: RDD[GeoIp], 
     val ipWithGeodata = geoDataRDD.join(geoIpRDD)
       .map(joined => CountryWithNetwork(new Network(joined._2._2.network), joined._2._1.countryId, joined._2._1.countryName))
       .collect()
-    val eventsRdd = eventsRDD
-    val byCategory = eventsRdd.groupBy(_.productCategory).persist
+    val byCategory = eventsRDD.groupBy(_.productCategory).persist
 
-    (aggregateCategories(byCategory), aggregateProducts(byCategory), aggregateCountries(eventsRdd, ipWithGeodata))
+    (aggregateCategories(byCategory), aggregateProducts(eventsRDD), aggregateCountries(eventsRDD, ipWithGeodata))
   }
 
   private def aggregateCountries(eventsRdd: RDD[Event], ipWithGeodata: Array[CountryWithNetwork]): Iterable[TopCountry] = {
@@ -36,11 +37,26 @@ class RDDEventAggregatorImpl(val eventsRDD: RDD[Event], val geoips: RDD[GeoIp], 
       .map(p => TopCountry(p._1, p._2))
   }
 
-  private def aggregateProducts(byCategory: RDD[(String, Iterable[Event])]): Iterable[TopCategoryProduct] = {
-    byCategory.flatMap{ case (category, events) =>
-      events.groupBy(_.productName).toList.sortBy(_._2.size).map(p => (p._1, p._2.size)).reverse.take(5)
-        .map(p => TopCategoryProduct(category, p._1, p._2))
-    }.collect
+  private def aggregateProducts(events: RDD[Event]): Iterable[TopCategoryProduct] = {
+    val byKey = events map (e => ((e.productCategory, e.productName), 1)) reduceByKey (_+_) map
+      {case ((cat, name), count) => (cat, (name, count))}
+
+    object CustOrdering extends Ordering[(String, Int)] {
+      override def compare(x: (String, Int), y: (String, Int)): Int = Integer.compare(y._2, x._2)
+    }
+    def trimToSize(res: mutable.TreeSet[(String, Int)], size: Int) = {
+      if (res.size > size) res.take(size) else res
+    }
+
+    byKey.aggregateByKey[mutable.TreeSet[(String, Int)]](mutable.TreeSet.empty[(String, Int)](CustOrdering))(
+      (acc, p) => {
+        trimToSize(acc += p, 5)
+      },
+      (acc1, acc2) => {
+        trimToSize(acc1 ++= acc2, 5)
+      })
+      .flatMap{case (category, products) => products map {case (product, count) => TopCategoryProduct(category, product, count)}}
+      .collect
   }
 
   private def aggregateCategories(byCategory: RDD[(String, Iterable[Event])]): Iterable[TopCategory] = {
