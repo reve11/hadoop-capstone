@@ -27,14 +27,13 @@ class RDDEventAggregatorImpl(val eventsRDD: RDD[Event], val geoips: RDD[GeoIp], 
       ipWithGeodata.find(c => c.network.minIpAddrNumeric() <= addr && c.network.maxIpAddrNumeric() >= addr)
     }
 
-    eventsRdd.groupBy(e => getGeoData(e.clientIp))
+    eventsRdd.map(e => (getGeoData(e.clientIp), e.productPrice))
       .filter(_._1.nonEmpty)
-      .map(p => (p._1.get, p._2.map(_.productPrice).sum))
-      .groupBy(_._1.countryName)
-      .map{ case (name, events) => (name, events.map(_._2).sum)}
+      .map { case (country, price) => (country.get.countryName, price) }
+      .reduceByKey(_ + _)
       .sortBy(_._2, ascending = false)
+      .map{case (countryName, spendings) => TopCountry(countryName, spendings)}
       .take(10)
-      .map(p => TopCountry(p._1, p._2))
   }
 
   private def aggregateProducts(events: RDD[Event]): Iterable[TopCategoryProduct] = {

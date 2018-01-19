@@ -43,10 +43,11 @@ class DataframeEventAggregator(val sqlContext: SQLContext, val eventsDF: DataFra
   }
 
   private def aggregateProducts(eventsDF: DataFrame): Iterable[TopCategoryProduct] = {
+    import org.apache.spark.sql.functions._
 
     val overCategory = Window.partitionBy($"category").orderBy($"count".desc, $"productName".asc)
     eventsDF.groupBy("productName", "category").count()
-      .withColumn("rank", rank.over(overCategory)).where($"rank" <= 5).rdd
+      .withColumn("rank", row_number().over(overCategory)).where($"rank" <= 5).rdd
       .map(r => TopCategoryProduct(r.getString(1), r.getString(0), r.getLong(2).toInt))
       .collect
   }

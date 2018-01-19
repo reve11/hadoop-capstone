@@ -29,6 +29,7 @@ object Main extends App {
   val eventsHiveTableName = "events"
   val ipsHiveTableName = "ips"
   val geodataHiveTableName = "countries"
+  val dbName = "capstone"
 
 
   private val context = getSparkContext(args(2))
@@ -56,7 +57,7 @@ object Main extends App {
 
   def getEventsProvider(name: String): EventProvider = {
     if ("hive".equalsIgnoreCase(name)) {
-      new HiveEventProvider(context, eventsHiveTableName)
+      new HiveEventProvider(context, dbName + "." + eventsHiveTableName)
     } else {
       new FileEventProvider(eventsLocation, context)
     }
@@ -64,7 +65,7 @@ object Main extends App {
 
   def getGeodataRepository(name: String): GeodataRepository = {
     if ("hive".equalsIgnoreCase(name)) {
-      new HiveGeodataRepository(context, ipsHiveTableName, geodataHiveTableName)
+      new HiveGeodataRepository(context, ipsHiveTableName, dbName + "." + geodataHiveTableName)
     } else {
       new FileGeodataRepository(countriesLocation, ipsLocation, context)
     }
@@ -81,7 +82,7 @@ object Main extends App {
   def getEvents(source: String): (RDD[Event], DataFrame) = {
     if ("hive".equalsIgnoreCase(source)) {
       import sqlContext.sql
-      val eventsDF: DataFrame = sql(s"select * from $eventsHiveTableName")
+      val eventsDF: DataFrame = sql(s"select * from $dbName.$eventsHiveTableName")
       val eventsRDD: RDD[Event] = eventsDF
         .map[Event]((row: Row) => mapToEvent(row.getString(0), row.getString(2), row.getString(1), row.getString(3), row.getString(4)))
       (eventsRDD, eventsDF)
@@ -101,7 +102,7 @@ object Main extends App {
     if ("hive".equalsIgnoreCase(source)) {
       import sqlContext.sql
       import sqlContext.implicits._
-      val ipsDF: DataFrame = sql(s"select * from $ipsHiveTableName")
+      val ipsDF: DataFrame = sql(s"select * from $dbName.$ipsHiveTableName")
       val ipsRDD: RDD[GeoIp] = ipsDF.map[GeoIp]((row: Row) => GeoIp(row.getString(0), row.getInt(1), row.getInt(2)))
       (ipsRDD, context.broadcast(ipsDF))
     } else {
@@ -121,7 +122,7 @@ object Main extends App {
     if ("hive".equalsIgnoreCase(source)) {
       import sqlContext.sql
       import sqlContext.implicits._
-      val geodataDF: DataFrame = sql(s"select * from $geodataHiveTableName")
+      val geodataDF: DataFrame = sql(s"select * from $dbName.$geodataHiveTableName")
       val geodataRDD: RDD[GeoData] = geodataDF.map[GeoData]((row: Row) => GeoData(row.getInt(0), row.getString(1),
         row.getString(2), row.getString(3), row.getString(4), row.getString(5)))
       (geodataRDD, geodataDF)
